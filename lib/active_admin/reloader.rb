@@ -1,3 +1,5 @@
+# TODO: is it necessary to keep this modularity? How different is reloading in Rails 4?
+
 module ActiveAdmin
 
   module Reloader
@@ -11,7 +13,7 @@ module ActiveAdmin
     #
     # @returns A concrete subclass of AbstractReloader
     def self.build(rails_app, active_admin_app, rails_version)
-      reloader_class = rails_version.to_f >= 3.2 ? Rails32Reloader : RailsLessThan31Reloader
+      reloader_class = rails_version.to_f >= 3.2 ? Rails32Reloader : raise('wat')
       reloader_class.new(rails_app, active_admin_app, rails_version)
     end
 
@@ -48,7 +50,6 @@ module ActiveAdmin
     # back off the existing reloader. This simplifies our duties... which is
     # nice.
     class Rails32Reloader < AbstractReloader
-
       # Attach to Rails and perform the reload on each request.
       def attach!
         active_admin_app.load_paths.each do |path|
@@ -61,69 +62,6 @@ module ActiveAdmin
           reloader.reload!
         end
       end
-
-    end
-
-    # Deals with reloading Active Admin on each request in
-    # development and once in production in Rails < 3.2.
-    class RailsLessThan31Reloader < AbstractReloader
-
-      class FileUpdateChecker < ::ActiveSupport::FileUpdateChecker
-        def paths
-          # hack to support both Rails 3.1 and 3.2
-          @files || @paths
-        end
-
-        # Over-ride the default #updated_at to support the deletion of files
-        def updated_at
-          paths.map { |path| File.mtime(path) rescue Time.now }.max
-        end
-
-        def execute_if_updated
-          super
-        end
-      end
-
-      attr_reader :file_update_checker
-
-      def initialize(rails_app, active_admin_app, rails_version)
-        super
-        @file_update_checker = FileUpdateChecker.new(watched_paths) do
-          reload!
-        end
-      end
-
-      def reload!
-        super
-        file_update_checker.paths.clear
-        watched_paths.each{|path| file_update_checker.paths << path }
-      end
-
-
-      # Attach to Rails and perform the reload on each request.
-      def attach!
-        # Bring the checker into local scope for the ruby block
-        checker = file_update_checker
-
-        reloader_class.to_prepare do
-          checker.execute_if_updated
-        end
-      end
-
-      def watched_paths
-        paths = active_admin_app.load_paths
-        active_admin_app.load_paths.each{|path| paths += Dir[File.join(path, "**", "*.rb")]}
-        paths
-      end
-
-      def reloader_class
-        if major_rails_version == "3.1"
-          ActionDispatch::Reloader
-        else
-          ActionDispatch::Callbacks
-        end
-      end
-
     end
 
   end
